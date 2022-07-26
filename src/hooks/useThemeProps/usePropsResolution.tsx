@@ -1,20 +1,14 @@
 import get from 'lodash.get';
 import merge from 'lodash.merge';
-import isEmpty from 'lodash.isempty';
 import { Platform } from 'react-native';
-import { useNativeBase } from '../useNativeBase';
 import { useColorMode } from '../../core/color-mode';
-import { omitUndefined, extractInObject } from '../../theme/tools';
-import { useBreakpointResolvedProps } from '../useBreakpointResolvedProps';
-import {
-  propsFlattener,
-  compareSpecificity,
-  IStateProps,
-} from './propsFlattener';
-import { useResponsiveSSRProps } from '../useResponsiveSSRProps';
-import React from 'react';
-import { ResponsiveQueryContext } from '../../utils/useResponsiveQuery/ResponsiveQueryProvider';
 import type { ComponentTheme } from '../../theme';
+import { extractInObject, omitUndefined } from '../../theme/tools';
+import { useBreakpointResolvedProps } from '../useBreakpointResolvedProps';
+import { useContrastText } from '../useContrastText';
+import { useNativeBase } from '../useNativeBase';
+import { useResponsiveSSRProps } from '../useResponsiveSSRProps';
+import { compareSpecificity, IStateProps, propsFlattener } from './propsFlattener';
 
 const SPREAD_PROP_SPECIFICITY_ORDER = [
   'p',
@@ -131,13 +125,10 @@ export function usePropsResolution(
     componentTheme?: any;
     resolveResponsively?: string[];
     ignoreProps?: string[];
-    cascadePseudoProps?: boolean;
-    extendTheme?: string[];
   }
 ) {
   const { theme } = useNativeBase();
-  const componentTheme =
-    config?.componentTheme ?? get(theme, `components.${component}`, {});
+  const componentTheme = config?.componentTheme ?? get(theme, `components.${component}`, {});
 
   if (process.env.NODE_ENV === 'development' && incomingProps.debug) {
     /* eslint-disable-next-line */
@@ -151,19 +142,11 @@ export function usePropsResolution(
       'background: #4b5563; color: #d97706; font-weight: 700; padding: 2px 8px;'
     );
     /* eslint-disable-next-line */
-    console.log(
-      '%c incomingProps: ',
-      'color: #4ade80; font-weight: 700;',
-      incomingProps
-    );
+    console.log('%c incomingProps: ', 'color: #4ade80; font-weight: 700;', incomingProps);
     /* eslint-disable-next-line */
     console.log('%c state: ', 'color: #4ade80; font-weight: 700;', state);
     /* eslint-disable-next-line */
-    console.log(
-      '%c componentTheme: ',
-      'color: #4ade80; font-weight: 700;',
-      componentTheme
-    );
+    console.log('%c componentTheme: ', 'color: #4ade80; font-weight: 700;', componentTheme);
   }
 
   const resolvedProps = usePropsResolutionWithComponentTheme(
@@ -173,19 +156,9 @@ export function usePropsResolution(
     config
   );
 
-  // Not Resolve theme props and pseudo props
-  if (incomingProps?.INTERNAL_notResolveThemeAndPseudoProps) {
-    delete incomingProps.INTERNAL_notResolveThemeAndPseudoProps;
-    return incomingProps;
-  }
-
   if (process.env.NODE_ENV === 'development' && incomingProps.debug) {
     /* eslint-disable-next-line */
-    console.log(
-      '%c resolvedProps: ',
-      'color: #22d3ee; font-weight: 700;',
-      resolvedProps
-    );
+    console.log('%c resolvedProps: ', 'color: #22d3ee; font-weight: 700;', resolvedProps);
   }
   return resolvedProps;
 }
@@ -198,20 +171,14 @@ export const usePropsResolutionWithComponentTheme = (
     componentTheme?: any;
     resolveResponsively?: string[];
     ignoreProps?: string[];
-    cascadePseudoProps?: boolean;
-    extendTheme?: string[];
   }
 ) => {
   const modifiedPropsForSSR = useResponsiveSSRProps(incomingProps);
 
   const [ignoredProps, cleanIncomingProps] = extractInObject(
     modifiedPropsForSSR,
-    ['children', 'onPress', 'icon', 'onOpen', 'onClose'].concat(
-      config?.ignoreProps || []
-    )
+    ['children', 'onPress', 'icon', 'onOpen', 'onClose'].concat(config?.ignoreProps || [])
   );
-  const responsiveQueryContext = React.useContext(ResponsiveQueryContext);
-  const disableCSSMediaQueries = responsiveQueryContext.disableCSSMediaQueries;
   const resolveResponsively = [
     'colorScheme',
     'size',
@@ -222,118 +189,9 @@ export const usePropsResolutionWithComponentTheme = (
   const { theme } = useNativeBase();
   const colorModeProps = useColorMode();
 
-  const extendedTheme: Array<any> = [];
-  if (config?.extendTheme) {
-    config?.extendTheme.map((componentName: string) => {
-      extendedTheme.push(get(theme, `components.${componentName}`, {}));
-    });
-  }
-  if (!isEmpty(componentTheme)) extendedTheme.push(componentTheme);
-
-  const resolveComponentTheme = (
-    themeType: Array<string>,
-    providedTheme: any
-  ): any => {
-    try {
-      if (themeType[1]) {
-        return typeof providedTheme[themeType[0]][themeType[1]] !== 'function'
-          ? providedTheme[themeType[0]][themeType[1]]
-          : providedTheme[themeType[0]][themeType[1]]({
-              theme,
-              ...incomingWithDefaultProps,
-              ...colorModeProps,
-            });
-      } else {
-        return typeof providedTheme[themeType[0]] !== 'function'
-          ? providedTheme[themeType[0]]
-          : providedTheme[themeType[0]]({
-              theme,
-              ...incomingWithDefaultProps,
-              ...colorModeProps,
-            });
-      }
-    } catch {
-      return {};
-    }
-  };
-  const callPropsFlattener = (
-    targetProps = {},
-    latestSpecifictyMap = {},
-    specificity = 1
-  ): any => {
-    return propsFlattener(
-      {
-        props:
-          process.env.NODE_ENV === 'development' && cleanIncomingProps.debug
-            ? { ...targetProps, debug: true }
-            : targetProps,
-        platform: Platform.OS,
-        colormode: colorModeProps.colorMode,
-        state: state || {},
-        currentSpecificityMap: latestSpecifictyMap,
-        previouslyFlattenProps: flattenProps || {},
-        cascadePseudoProps: config?.cascadePseudoProps,
-      },
-      specificity
-    );
-  };
-
   // STEP 1: combine default props and incoming props
 
-  const incomingWithDefaultProps = merge(
-    {},
-    componentTheme.defaultProps || {},
-    cleanIncomingProps
-  );
-
-  // STEP 1.5: resolving component theme
-  let combinedBaseStyle = {};
-  let combinedVariantStyle = {};
-  let combinedSizeStyle = {};
-  extendedTheme.map((extededComponentTheme: any) => {
-    if (extededComponentTheme.baseStyle) {
-      combinedBaseStyle = {
-        ...combinedBaseStyle,
-        ...resolveComponentTheme(['baseStyle'], extededComponentTheme),
-      };
-    }
-    if (incomingWithDefaultProps.variant) {
-      if (extededComponentTheme.variants) {
-        combinedVariantStyle = {
-          ...combinedVariantStyle,
-          ...resolveComponentTheme(
-            ['variants', incomingWithDefaultProps.variant],
-            extededComponentTheme
-          ),
-        };
-      }
-    }
-    if (
-      incomingWithDefaultProps.size &&
-      extededComponentTheme?.sizes &&
-      extededComponentTheme?.sizes[incomingWithDefaultProps.size]
-    ) {
-      if (
-        typeof extededComponentTheme.sizes[incomingWithDefaultProps.size] ===
-          'string' ||
-        typeof extededComponentTheme.sizes[incomingWithDefaultProps.size] ===
-          'number'
-      ) {
-        incomingWithDefaultProps.size =
-          extededComponentTheme.sizes[incomingWithDefaultProps.size];
-      } else {
-        combinedSizeStyle = {
-          ...combinedSizeStyle,
-          ...resolveComponentTheme(
-            ['sizes', incomingWithDefaultProps.size],
-            extededComponentTheme
-          ),
-        };
-        incomingWithDefaultProps.size = undefined;
-      }
-    }
-  });
-
+  const incomingWithDefaultProps = merge({}, componentTheme.defaultProps || {}, cleanIncomingProps);
   // STEP 2: flatten them
   if (process.env.NODE_ENV === 'development' && cleanIncomingProps.debug) {
     /* eslint-disable-next-line */
@@ -342,30 +200,26 @@ export const usePropsResolutionWithComponentTheme = (
       'background: #4b5563; color: #FFF; font-weight: 700; padding: 2px 8px;'
     );
   }
-  //TODO: hack
-  let flattenProps: any, specificityMap;
-  [flattenProps, specificityMap] = callPropsFlattener(
-    incomingWithDefaultProps,
-    {},
+  let [flattenProps, specificityMap] = propsFlattener(
+    {
+      props: incomingWithDefaultProps,
+      platform: Platform.OS,
+      colormode: colorModeProps.colorMode,
+      state: state || {},
+      previouslyFlattenProps: {},
+    },
     2
   );
+
+  // STEP 2.5: resolving responsive props
   const responsiveProps = {};
-  if (disableCSSMediaQueries) {
-    // STEP 2.5: resolving responsive props
-    resolveResponsively.map((propsName) => {
-      if (flattenProps[propsName]) {
-        // @ts-ignore
-        responsiveProps[propsName] = flattenProps[propsName];
-      }
-    });
-  }
-  if (resolveResponsively.includes('direction')) {
-    const propName = 'direction';
-    if (flattenProps[propName]) {
+  resolveResponsively.map((propsName) => {
+    if (flattenProps[propsName]) {
       // @ts-ignore
-      responsiveProps[propName] = flattenProps[propName];
+      responsiveProps[propsName] = flattenProps[propsName];
     }
-  }
+  });
+
   const responsivelyResolvedProps = useBreakpointResolvedProps(responsiveProps);
 
   flattenProps = {
@@ -375,8 +229,18 @@ export const usePropsResolutionWithComponentTheme = (
   // STEP 3: Pass it to baseStyle, then variant and then size and resolve them.
 
   // NOTE: Resoloving baseStyle
-  let flattenBaseStyle, baseSpecificityMap;
-  if (combinedBaseStyle) {
+  let componentBaseStyle = {};
+  let flattenBaseStyle;
+  let baseSpecificityMap;
+  if (componentTheme.baseStyle) {
+    componentBaseStyle =
+      typeof componentTheme.baseStyle !== 'function'
+        ? componentTheme.baseStyle
+        : componentTheme.baseStyle({
+            theme,
+            ...flattenProps,
+            ...colorModeProps,
+          });
     if (process.env.NODE_ENV === 'development' && cleanIncomingProps.debug) {
       /* eslint-disable-next-line */
       console.log(
@@ -384,16 +248,40 @@ export const usePropsResolutionWithComponentTheme = (
         'background: #4b5563; color: #eee; font-weight: 700; padding: 2px 8px;'
       );
     }
-    [flattenBaseStyle, baseSpecificityMap] = callPropsFlattener(
-      combinedBaseStyle,
-      specificityMap
+    [flattenBaseStyle, baseSpecificityMap] = propsFlattener(
+      {
+        props:
+          process.env.NODE_ENV === 'development' && cleanIncomingProps.debug
+            ? { ...componentBaseStyle, debug: true }
+            : componentBaseStyle,
+        platform: Platform.OS,
+        colormode: colorModeProps.colorMode,
+        state: state || {},
+        currentSpecificityMap: specificityMap,
+        previouslyFlattenProps: flattenProps,
+      },
+      1
     );
   }
 
   // NOTE: Resolving variants
-  let flattenVariantStyle, variantSpecificityMap;
+  const { variant } = flattenProps;
+
+  let componentVariantProps = {};
+  let flattenVariantStyle;
+  let variantSpecificityMap;
   // Extracting props from variant
-  if (combinedVariantStyle) {
+  if (variant && componentTheme.variants && componentTheme.variants[variant]) {
+    componentVariantProps =
+      typeof componentTheme.variants[variant] !== 'function'
+        ? componentTheme.variants[variant]
+        : // @ts-ignore
+          componentTheme.variants[variant]({
+            theme,
+            ...flattenProps,
+            ...colorModeProps,
+          });
+
     if (process.env.NODE_ENV === 'development' && cleanIncomingProps.debug) {
       /* eslint-disable-next-line */
       console.log(
@@ -401,21 +289,60 @@ export const usePropsResolutionWithComponentTheme = (
         'background: #4b5563; color: #FFF; font-weight: 700; padding: 2px 8px;'
       );
     }
-    [flattenVariantStyle, variantSpecificityMap] = callPropsFlattener(
-      combinedVariantStyle,
-      baseSpecificityMap || specificityMap
+    [flattenVariantStyle, variantSpecificityMap] = propsFlattener(
+      {
+        props:
+          process.env.NODE_ENV === 'development' && cleanIncomingProps.debug
+            ? { ...componentVariantProps, debug: true }
+            : componentVariantProps,
+        platform: Platform.OS,
+        colormode: colorModeProps.colorMode,
+        state: state || {},
+        currentSpecificityMap: baseSpecificityMap || specificityMap,
+        // NOTE: Ideally flattenBaseStyle and flattenProps should be deeply merged to create previouslyFlattenProps.
+        previouslyFlattenProps: flattenProps,
+      },
+      1
     );
 
     // We remove variant from original props if we found it in the componentTheme
-    //@ts-ignore
+    // @ts-ignore
     flattenProps.variant = undefined;
   }
 
   // NOTE: Resolving size
 
-  let flattenSizeStyle, sizeSpecificityMap;
+  const { size } = flattenProps;
+
+  let componentSizeProps = {};
+  let flattenSizeStyle;
+  let sizeSpecificityMap;
   // Extracting props from size
-  if (combinedSizeStyle) {
+  if (size && componentTheme.sizes && componentTheme.sizes[size]) {
+    // Type - sizes: {lg: 1}. Refer icon theme
+    if (
+      typeof componentTheme.sizes[size] === 'string' ||
+      typeof componentTheme.sizes[size] === 'number'
+    ) {
+      flattenProps.size = componentTheme.sizes[size];
+      // @ts-ignore
+      // componentSizeProps.size = componentTheme.sizes[size];
+    }
+    // Type - sizes: (props) => ({lg: {px: 1}}). Refer heading theme
+    else if (typeof componentTheme.sizes[size] === 'function') {
+      flattenProps.size = undefined;
+      // @ts-ignore
+      componentSizeProps = componentTheme.sizes[size]({
+        theme,
+        ...flattenProps,
+        ...colorModeProps,
+      });
+    }
+    // Type - sizes: {lg: {px: 1}}. Refer button theme
+    else {
+      flattenProps.size = undefined;
+      componentSizeProps = componentTheme.sizes[size];
+    }
     if (process.env.NODE_ENV === 'development' && cleanIncomingProps.debug) {
       /* eslint-disable-next-line */
       console.log(
@@ -423,42 +350,26 @@ export const usePropsResolutionWithComponentTheme = (
         'background: #4b5563; color: #FFF; font-weight: 700; padding: 2px 8px;'
       );
     }
-    [flattenSizeStyle, sizeSpecificityMap] = callPropsFlattener(
-      combinedSizeStyle,
-      variantSpecificityMap || baseSpecificityMap || specificityMap
+    [flattenSizeStyle, sizeSpecificityMap] = propsFlattener(
+      {
+        props:
+          process.env.NODE_ENV === 'development' && cleanIncomingProps.debug
+            ? { ...componentSizeProps, debug: true }
+            : componentSizeProps,
+        platform: Platform.OS,
+        colormode: colorModeProps.colorMode,
+        state: state || {},
+        currentSpecificityMap: variantSpecificityMap || baseSpecificityMap || specificityMap,
+        previouslyFlattenProps: flattenProps,
+      },
+      1
     );
   }
 
-  // STEP 4: merge
-  const defaultStyles = merge(
-    {},
-    flattenBaseStyle,
-    flattenVariantStyle,
-    flattenSizeStyle
-  );
-
-  /*Resolve all the internal used Pseudo Props*/
-  const resolvePseudoProps = (
-    flatPseudoProp: any /** Props coming from Pseudo inside flattenProps */,
-    baseStylePseudoProp: any /** Props coming from Pseudo inside defaultStyles(baseStyle) */
-  ) => {
-    for (const prop in flatPseudoProp) {
-      baseStylePseudoProp[prop] =
-        flatPseudoProp[
-          prop
-        ]; /* Replace all the similar prop from from internal props */
-    }
-    return baseStylePseudoProp;
-  };
+  // // STEP 4: merge
+  const defaultStyles = merge({}, flattenBaseStyle, flattenVariantStyle, flattenSizeStyle);
 
   for (const prop in defaultStyles) {
-    if (prop.startsWith('_') && flattenProps.hasOwnProperty(prop)) {
-      /*Resolve all the internal used Pseudo Props*/
-      defaultStyles[prop] = resolvePseudoProps(
-        flattenProps[prop],
-        defaultStyles[prop]
-      );
-    }
     delete flattenProps[prop];
   }
 
@@ -470,16 +381,55 @@ export const usePropsResolutionWithComponentTheme = (
     sizeSpecificityMap
   );
 
-  flattenProps = propsSpreader(
-    { ...defaultStyles, ...flattenProps },
-    defaultSpecificity
-  );
+  flattenProps = propsSpreader({ ...defaultStyles, ...flattenProps }, defaultSpecificity);
+
+  // // STEP 5: linear Grad and contrastText
+  let ignore: any = [];
+  if (
+    flattenProps.bg?.linearGradient ||
+    flattenProps.background?.linearGradient ||
+    flattenProps.bgColor?.linearGradient ||
+    flattenProps.backgroundColor?.linearGradient
+  ) {
+    let bgProp = 'bg';
+    if (flattenProps.background?.linearGradient) {
+      bgProp = 'background';
+    } else if (flattenProps.bgColor?.linearGradient) {
+      bgProp = 'bgColor';
+    } else if (flattenProps.backgroundColor?.linearGradient) {
+      bgProp = 'backgroundColor';
+    }
+    flattenProps[bgProp].linearGradient.colors = flattenProps[bgProp].linearGradient.colors.map(
+      (color: string) => {
+        return get(theme.colors, color, color);
+      }
+    );
+    ignore = ['bg', 'background', 'backgroundColor', 'bgColor'];
+  }
+  // // NOTE: seprating bg props when linearGardiant is available
+  const [gradientProps] = extractInObject(flattenProps, ignore);
+
+  const bgColor = flattenProps.bg ?? flattenProps.backgroundColor ?? flattenProps.bgColor;
+
+  const contrastTextColor = useContrastText(bgColor, flattenProps?._text?.color);
+
+  flattenProps._text =
+    contrastTextColor && flattenProps?._text?.color === undefined
+      ? {
+          color: contrastTextColor,
+          ...flattenProps._text,
+        }
+      : flattenProps._text;
 
   const resolvedProps = omitUndefined({
     ...flattenProps,
     ...ignoredProps,
+    ...gradientProps,
   });
+  // STEP 6: Return
 
-  // STEP 5: Return
+  // flattenProps = {};
+  // propertyDepth = {};
+
   return resolvedProps;
 };
